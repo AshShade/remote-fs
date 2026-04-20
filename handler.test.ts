@@ -126,22 +126,48 @@ describe("CORS", () => {
   });
 });
 
+describe("directory listing", () => {
+  test("returns HTML for directory", async () => {
+    await fetch(req("PUT", "dir/a.txt", "aaa"));
+    await fetch(req("PUT", "dir/b.txt", "bbb"));
+    const res = await fetch(req("GET", "dir/"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/html");
+    const html = await res.text();
+    expect(html).toContain("a.txt");
+    expect(html).toContain("b.txt");
+  });
+
+  test("shows parent link for subdirectory", async () => {
+    await fetch(req("PUT", "sub/child/f.txt", "x"));
+    const res = await fetch(req("GET", "sub/child/"));
+    const html = await res.text();
+    expect(html).toContain("..");
+  });
+
+  test("root path returns directory listing", async () => {
+    await fetch(req("PUT", "root-test.txt", "hi"));
+    const res = await fetch(new Request("http://localhost/", { method: "GET" }));
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("root-test.txt");
+  });
+
+  test("directories sort before files", async () => {
+    await fetch(req("PUT", "mixed/file.txt", "f"));
+    await fetch(req("PUT", "mixed/subdir/inner.txt", "i"));
+    const res = await fetch(req("GET", "mixed/"));
+    const html = await res.text();
+    const dirPos = html.indexOf("subdir/");
+    const filePos = html.indexOf("file.txt");
+    expect(dirPos).toBeLessThan(filePos);
+  });
+});
+
 describe("security", () => {
   test("path traversal is neutralized by URL normalization", async () => {
     const res = await fetch(req("GET", "../../../etc/passwd"));
-    // URL normalizes ../ away → resolves inside ROOT → 404 (not a real traversal)
     expect(res.status).toBe(404);
-  });
-
-  test("rejects encoded traversal that escapes root", async () => {
-    // Manually craft a request with a path that resolves outside ROOT
-    const res = await fetch(new Request("http://localhost/", { method: "GET" }));
-    expect(res.status).toBe(400); // empty decoded path
-  });
-
-  test("rejects empty path", async () => {
-    const res = await fetch(req("GET", ""));
-    expect(res.status).toBe(400);
   });
 
   test("unsupported method returns 405", async () => {

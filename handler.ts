@@ -1,16 +1,69 @@
 // remote-fs — lightweight REST file server with Last-Modified support
-import { existsSync, mkdirSync, unlinkSync, statSync } from "fs";
-import { join, resolve } from "path";
+import { existsSync, mkdirSync, unlinkSync, statSync, readdirSync } from "fs";
+import { join, resolve, relative } from "path";
 
 function safePath(root: string, url: string): string | null {
-  const decoded = decodeURIComponent(new URL(url, "http://x").pathname.slice(1));
-  if (!decoded) return null;
-  const full = resolve(root, decoded);
-  return full.startsWith(root + "/") ? full : null;
+  const decoded = decodeURIComponent(new URL(url, "http://x").pathname);
+  const full = resolve(root, decoded.slice(1)); // strip leading /
+  return full === root || full.startsWith(root + "/") ? full : null;
 }
 
 function cors(headers: Record<string, string> = {}): Record<string, string> {
   return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, PUT, HEAD, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, If-Modified-Since", ...headers };
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + " MB";
+  return (bytes / 1073741824).toFixed(1) + " GB";
+}
+
+function dirHtml(dirPath: string, urlPath: string): string {
+  const entries = readdirSync(dirPath, { withFileTypes: true })
+    .filter(e => !e.name.startsWith("."))
+    .sort((a, b) => {
+      if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  const rows = entries.map(e => {
+    const stat = statSync(join(dirPath, e.name));
+    const href = urlPath.replace(/\/$/, "") + "/" + encodeURIComponent(e.name) + (e.isDirectory() ? "/" : "");
+    const icon = e.isDirectory() ? "📁" : "📄";
+    const size = e.isDirectory() ? "—" : formatSize(stat.size);
+    const mtime = stat.mtime.toISOString().replace("T", " ").slice(0, 19);
+    return `<tr><td>${icon}</td><td><a href="${href}">${e.name}${e.isDirectory() ? "/" : ""}</a></td><td>${size}</td><td>${mtime}</td></tr>`;
+  }).join("\n");
+
+  const parent = urlPath !== "/" ? `<tr><td>📁</td><td><a href="${urlPath.replace(/\/[^/]*\/?$/, "/") || "/"}">..</a></td><td>—</td><td></td></tr>\n` : "";
+  const display = urlPath === "/" ? "~" : "~" + urlPath;
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>remote-fs ${display}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1e1e2e; color: #cdd6f4; font-family: -apple-system, 'SF Mono', monospace; padding: 24px; }
+  h1 { color: #cba6f7; font-size: 18px; margin-bottom: 16px; font-weight: 500; }
+  h1 span { color: #585b70; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: #a6adc8; font-size: 12px; font-weight: 500; padding: 6px 12px; border-bottom: 1px solid #313244; }
+  td { padding: 8px 12px; border-bottom: 1px solid #313244; font-size: 14px; }
+  tr:hover { background: #313244; }
+  a { color: #89b4fa; text-decoration: none; }
+  a:hover { color: #b4befe; text-decoration: underline; }
+  td:first-child { width: 28px; text-align: center; }
+  td:nth-child(3) { color: #a6adc8; font-size: 13px; width: 80px; text-align: right; }
+  td:nth-child(4) { color: #585b70; font-size: 12px; width: 160px; text-align: right; }
+  .footer { margin-top: 20px; color: #585b70; font-size: 12px; }
+</style></head><body>
+<h1>remote-fs <span>${display}</span></h1>
+<table>
+<thead><tr><th></th><th>Name</th><th>Size</th><th>Modified</th></tr></thead>
+<tbody>
+${parent}${rows}
+</tbody></table>
+<div class="footer">${entries.length} items</div>
+</body></html>`;
 }
 
 export function createHandler(root: string) {
@@ -25,6 +78,13 @@ export function createHandler(root: string) {
     if (req.method === "HEAD" || req.method === "GET") {
       if (!existsSync(path)) return new Response("not found", { status: 404, headers: cors() });
       const stat = statSync(path);
+
+      if (stat.isDirectory()) {
+        if (req.method === "HEAD") return new Response(null, { status: 200, headers: cors() });
+        const urlPath = new URL(req.url, "http://x").pathname;
+        return new Response(dirHtml(path, urlPath), { headers: { ...cors(), "Content-Type": "text/html; charset=utf-8" } });
+      }
+
       const mtime = stat.mtime.toUTCString();
       const ims = req.headers.get("If-Modified-Since");
       if (ims && new Date(ims).getTime() >= stat.mtimeMs) {
