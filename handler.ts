@@ -38,6 +38,10 @@ function dirHtml(dirPath: string, urlPath: string): string {
 
   const parent = urlPath !== "/" ? `<tr><td>📁</td><td><a href="${urlPath.replace(/\/[^/]*\/?$/, "/") || "/"}">..</a></td><td>—</td><td></td></tr>\n` : "";
   const display = urlPath === "/" ? "~" : "~" + urlPath;
+  const parts = urlPath.split("/").filter(Boolean);
+  const breadcrumb = [`<a href="/">~</a>`].concat(
+    parts.map((p, i) => `<a href="/${parts.slice(0, i + 1).join("/")}/">${p}</a>`)
+  ).join(" / ");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>remote-fs ${display}</title>
 <style>
@@ -45,6 +49,9 @@ function dirHtml(dirPath: string, urlPath: string): string {
   body { background: #1e1e2e; color: #cdd6f4; font-family: -apple-system, 'SF Mono', monospace; padding: 24px; }
   h1 { color: #cba6f7; font-size: 18px; margin-bottom: 16px; font-weight: 500; }
   h1 span { color: #585b70; }
+  h1 span a { color: #a6adc8; }
+  h1 span a:hover { color: #cba6f7; }
+  h1 span a:last-child { color: #cdd6f4; }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; color: #a6adc8; font-size: 12px; font-weight: 500; padding: 6px 12px; border-bottom: 1px solid #313244; }
   td { padding: 8px 12px; border-bottom: 1px solid #313244; font-size: 14px; }
@@ -56,7 +63,7 @@ function dirHtml(dirPath: string, urlPath: string): string {
   td:nth-child(4) { color: #585b70; font-size: 12px; width: 160px; text-align: right; }
   .footer { margin-top: 20px; color: #585b70; font-size: 12px; }
 </style></head><body>
-<h1>remote-fs <span>${display}</span></h1>
+<h1>remote-fs <span>${breadcrumb}</span></h1>
 <table>
 <thead><tr><th></th><th>Name</th><th>Size</th><th>Modified</th></tr></thead>
 <tbody>
