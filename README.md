@@ -6,7 +6,7 @@ Lightweight REST file server with `Last-Modified` support. Zero dependencies, ru
 
 ```bash
 bun run server.ts [port] [root-dir]
-bun run server.ts 9876 ./data
+bun run server.ts 5656 ~/.remote-fs
 ```
 
 ## API
@@ -24,11 +24,11 @@ Files are stored under the root directory (default: `./data`). Nested paths crea
 
 ```bash
 # Write
-curl -X PUT http://localhost:9876/xun/config.json -d '{"plugins":[]}'
+curl -X PUT http://localhost:5656/xun/config.json -d '{"plugins":[]}'
 
 # Read
-curl http://localhost:9876/xun/config.json
+curl http://localhost:5656/xun/config.json
 
 # Check if modified (returns 304 if unchanged)
-curl -I -H "If-Modified-Since: Mon, 20 Apr 2026 22:00:00 GMT" http://localhost:9876/xun/config.json
+curl -I -H "If-Modified-Since: Mon, 20 Apr 2026 22:00:00 GMT" http://localhost:5656/xun/config.json
 ```
