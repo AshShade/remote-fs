@@ -62,14 +62,39 @@ function dirHtml(dirPath: string, urlPath: string): string {
   td:nth-child(3) { color: #a6adc8; font-size: 13px; width: 80px; text-align: right; }
   td:nth-child(4) { color: #585b70; font-size: 12px; width: 160px; text-align: right; }
   .footer { margin-top: 20px; color: #585b70; font-size: 12px; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .toolbar button { background: #313244; border: 1px solid #45475a; border-radius: 6px; color: #cdd6f4; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .toolbar button:hover { border-color: #cba6f7; color: #cba6f7; }
+  .toolbar input[type=file] { display: none; }
 </style></head><body>
 <h1>remote-fs <span>${breadcrumb}</span></h1>
+<div class="toolbar">
+  <button onclick="mkdir()">📁 New folder</button>
+  <button onclick="document.getElementById('upload').click()">📄 Upload file</button>
+  <input type="file" id="upload" multiple onchange="upload(this.files)" />
+</div>
 <table>
 <thead><tr><th></th><th>Name</th><th>Size</th><th>Modified</th></tr></thead>
 <tbody>
 ${parent}${rows}
 </tbody></table>
 <div class="footer">${entries.length} items</div>
+<script>
+const base = "${urlPath.replace(/\/$/, "")}";
+function mkdir() {
+  const name = prompt("Folder name:");
+  if (!name) return;
+  fetch(base + "/" + encodeURIComponent(name) + "/.gitkeep", { method: "PUT", body: "" })
+    .then(() => location.reload());
+}
+function upload(files) {
+  Promise.all([...files].map(f =>
+    f.arrayBuffer().then(buf =>
+      fetch(base + "/" + encodeURIComponent(f.name), { method: "PUT", body: buf })
+    )
+  )).then(() => location.reload());
+}
+</script>
 </body></html>`;
 }
 

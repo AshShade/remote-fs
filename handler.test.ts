@@ -162,6 +162,27 @@ describe("directory listing", () => {
     const filePos = html.indexOf("file.txt");
     expect(dirPos).toBeLessThan(filePos);
   });
+
+  test("has toolbar with mkdir and upload buttons", async () => {
+    await fetch(req("PUT", "toolbar-test/f.txt", "x"));
+    const res = await fetch(req("GET", "toolbar-test/"));
+    const html = await res.text();
+    expect(html).toContain("New folder");
+    expect(html).toContain("Upload file");
+  });
+
+  test("mkdir via PUT .gitkeep creates directory", async () => {
+    await fetch(req("PUT", "newdir/.gitkeep", ""));
+    const res = await fetch(req("GET", "newdir/"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/html");
+  });
+
+  test("upload via PUT creates file", async () => {
+    await fetch(req("PUT", "uploads/test.txt", "uploaded content"));
+    const res = await fetch(req("GET", "uploads/test.txt"));
+    expect(await res.text()).toBe("uploaded content");
+  });
 });
 
 describe("security", () => {
