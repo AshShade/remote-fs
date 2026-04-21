@@ -9,7 +9,7 @@ function safePath(root: string, url: string): string | null {
 }
 
 function cors(headers: Record<string, string> = {}): Record<string, string> {
-  return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, PUT, HEAD, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, If-Modified-Since", ...headers };
+  return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, PUT, POST, HEAD, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, If-Modified-Since", ...headers };
 }
 
 function formatSize(bytes: number): string {
@@ -84,7 +84,7 @@ const base = "${urlPath.replace(/\/$/, "")}";
 function mkdir() {
   const name = prompt("Folder name:");
   if (!name) return;
-  fetch(base + "/" + encodeURIComponent(name) + "/.gitkeep", { method: "PUT", body: "" })
+  fetch(base + "/" + encodeURIComponent(name), { method: "POST" })
     .then(() => location.reload());
 }
 function upload(files) {
@@ -142,6 +142,11 @@ export function createHandler(root: string) {
       if (!existsSync(path)) return new Response("not found", { status: 404, headers: cors() });
       unlinkSync(path);
       return Response.json({ deleted: true }, { headers: cors() });
+    }
+
+    if (req.method === "POST") {
+      mkdirSync(path, { recursive: true });
+      return Response.json({ created: true }, { status: 201, headers: cors() });
     }
 
     return new Response("method not allowed", { status: 405, headers: cors() });

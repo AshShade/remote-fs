@@ -171,11 +171,12 @@ describe("directory listing", () => {
     expect(html).toContain("Upload file");
   });
 
-  test("mkdir via PUT .gitkeep creates directory", async () => {
-    await fetch(req("PUT", "newdir/.gitkeep", ""));
-    const res = await fetch(req("GET", "newdir/"));
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toContain("text/html");
+  test("mkdir via POST creates directory", async () => {
+    const res = await fetch(req("POST", "newdir"));
+    expect(res.status).toBe(201);
+    const get = await fetch(req("GET", "newdir/"));
+    expect(get.status).toBe(200);
+    expect(get.headers.get("Content-Type")).toContain("text/html");
   });
 
   test("upload via PUT creates file", async () => {
@@ -192,7 +193,7 @@ describe("security", () => {
   });
 
   test("unsupported method returns 405", async () => {
-    const res = await fetch(req("POST", "test.txt"));
+    const res = await fetch(req("PATCH", "test.txt"));
     expect(res.status).toBe(405);
   });
 });
