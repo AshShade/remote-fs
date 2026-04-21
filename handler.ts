@@ -100,7 +100,9 @@ export function createHandler(root: string) {
       if (req.method === "HEAD") {
         return new Response(null, { status: 200, headers: cors({ "Last-Modified": mtime }) });
       }
-      return new Response(Bun.file(path), { headers: cors({ "Last-Modified": mtime }) });
+      const file = Bun.file(path);
+      const ct = file.type === "application/octet-stream" ? "text/plain; charset=utf-8" : file.type;
+      return new Response(file, { headers: cors({ "Last-Modified": mtime, "Content-Type": ct }) });
     }
 
     if (req.method === "PUT") {
