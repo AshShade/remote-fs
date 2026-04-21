@@ -94,7 +94,7 @@ export function createHandler(root: string) {
 
       const mtime = stat.mtime.toUTCString();
       const ims = req.headers.get("If-Modified-Since");
-      if (ims && new Date(ims).getTime() >= stat.mtimeMs) {
+      if (ims && Math.floor(new Date(ims).getTime() / 1000) >= Math.floor(stat.mtimeMs / 1000)) {
         return new Response(null, { status: 304, headers: cors({ "Last-Modified": mtime }) });
       }
       if (req.method === "HEAD") {
