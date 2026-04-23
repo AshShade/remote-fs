@@ -19,7 +19,7 @@ function formatSize(bytes: number): string {
   return (bytes / 1073741824).toFixed(1) + " GB";
 }
 
-function dirHtml(dirPath: string, urlPath: string): string {
+function dirHtml(dirPath: string, urlPath: string, root: string): string {
   const entries = readdirSync(dirPath, { withFileTypes: true })
     .filter(e => !e.name.startsWith("."))
     .sort((a, b) => {
@@ -33,10 +33,12 @@ function dirHtml(dirPath: string, urlPath: string): string {
     const icon = e.isDirectory() ? "📁" : "📄";
     const size = e.isDirectory() ? "—" : formatSize(stat.size);
     const mtime = stat.mtime.toISOString().replace("T", " ").slice(0, 19);
-    return `<tr><td>${icon}</td><td><a href="${href}">${e.name}${e.isDirectory() ? "/" : ""}</a></td><td>${size}</td><td>${mtime}</td></tr>`;
+    const dl = e.isDirectory() ? "" : `<a href="${href}" download class="dl" title="Download">⬇</a>`;
+    const target = e.isDirectory() ? "" : ` target="_blank"`;
+    return `<tr><td>${icon}</td><td><a href="${href}"${target}>${e.name}${e.isDirectory() ? "/" : ""}</a></td><td>${dl}</td><td>${size}</td><td>${mtime}</td></tr>`;
   }).join("\n");
 
-  const parent = urlPath !== "/" ? `<tr><td>📁</td><td><a href="${urlPath.replace(/\/[^/]*\/?$/, "/") || "/"}">..</a></td><td>—</td><td></td></tr>\n` : "";
+  const parent = urlPath !== "/" ? `<tr><td>📁</td><td><a href="${urlPath.replace(/\/[^/]*\/?$/, "/") || "/"}">..</a></td><td></td><td>—</td><td></td></tr>\n` : "";
   const display = urlPath === "/" ? "~" : "~" + urlPath;
   const parts = urlPath.split("/").filter(Boolean);
   const breadcrumb = [`<a href="/">~</a>`].concat(
@@ -59,13 +61,22 @@ function dirHtml(dirPath: string, urlPath: string): string {
   a { color: #89b4fa; text-decoration: none; }
   a:hover { color: #b4befe; text-decoration: underline; }
   td:first-child { width: 28px; text-align: center; }
-  td:nth-child(3) { color: #a6adc8; font-size: 13px; width: 80px; text-align: right; }
-  td:nth-child(4) { color: #585b70; font-size: 12px; width: 160px; text-align: right; }
+  td:nth-child(3) { width: 32px; text-align: center; }
+  td:nth-child(4) { color: #a6adc8; font-size: 13px; width: 80px; text-align: right; }
+  td:nth-child(5) { color: #585b70; font-size: 12px; width: 160px; text-align: right; }
+  .dl { color: #585b70; font-size: 12px; text-decoration: none; }
+  .dl:hover { color: #89b4fa; }
   .footer { margin-top: 20px; color: #585b70; font-size: 12px; }
   .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
   .toolbar button { background: #313244; border: 1px solid #45475a; border-radius: 6px; color: #cdd6f4; padding: 6px 14px; font-size: 13px; cursor: pointer; }
   .toolbar button:hover { border-color: #cba6f7; color: #cba6f7; }
   .toolbar input[type=file] { display: none; }
+  .pathbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .pathbar input { flex: 1; background: #313244; border: 1px solid #45475a; border-radius: 6px; color: #cdd6f4; padding: 6px 12px; font-size: 13px; font-family: inherit; outline: none; }
+  .pathbar input:focus { border-color: #cba6f7; }
+  .pathbar input::placeholder { color: #585b70; }
+  .pathbar button { background: #313244; border: 1px solid #45475a; border-radius: 6px; color: #cdd6f4; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .pathbar button:hover { border-color: #cba6f7; color: #cba6f7; }
 </style></head><body>
 <h1>remote-fs <span>${breadcrumb}</span></h1>
 <div class="toolbar">
@@ -73,14 +84,19 @@ function dirHtml(dirPath: string, urlPath: string): string {
   <button onclick="document.getElementById('upload').click()">📄 Upload file</button>
   <input type="file" id="upload" multiple onchange="upload(this.files)" />
 </div>
+<div class="pathbar">
+  <input type="text" id="pathInput" placeholder="Enter absolute or relative path… (e.g. /projects/foo/bar.md)" onkeydown="if(event.key==='Enter')goPath()" />
+  <button onclick="goPath()">Go</button>
+</div>
 <table>
-<thead><tr><th></th><th>Name</th><th>Size</th><th>Modified</th></tr></thead>
+<thead><tr><th></th><th>Name</th><th></th><th>Size</th><th>Modified</th></tr></thead>
 <tbody>
 ${parent}${rows}
 </tbody></table>
 <div class="footer">${entries.length} items</div>
 <script>
 const base = "${urlPath.replace(/\/$/, "")}";
+const ROOT = "${root}";
 function mkdir() {
   const name = prompt("Folder name:");
   if (!name) return;
@@ -93,6 +109,29 @@ function upload(files) {
       fetch(base + "/" + encodeURIComponent(f.name), { method: "PUT", body: buf })
     )
   )).then(() => location.reload());
+}
+function goPath() {
+  let p = document.getElementById("pathInput").value.trim();
+  if (!p) return;
+  // Strip base path prefix (e.g. /home/user → "")
+  if (p.startsWith(ROOT + "/")) p = p.slice(ROOT.length);
+  else if (p === ROOT) p = "/";
+  // Ensure leading slash
+  if (!p.startsWith("/")) p = base + "/" + p;
+  // Check if path is file or dir via HEAD
+  fetch(p, { method: "HEAD" }).then(r => {
+    if (!r.ok) { alert("Path not found: " + p); return; }
+    const ct = r.headers.get("Content-Type") || "";
+    if (ct.includes("text/html")) {
+      // directory listing → navigate
+      location.href = p;
+    } else {
+      // file → open in new tab, navigate to parent dir
+      window.open(p, "_blank");
+      const dir = p.slice(0, p.lastIndexOf("/") + 1) || "/";
+      if (dir !== location.pathname) location.href = dir;
+    }
+  });
 }
 </script>
 </body></html>`;
@@ -112,9 +151,9 @@ export function createHandler(root: string) {
       const stat = statSync(path);
 
       if (stat.isDirectory()) {
-        if (req.method === "HEAD") return new Response(null, { status: 200, headers: cors() });
+        if (req.method === "HEAD") return new Response(null, { status: 200, headers: cors({ "Content-Type": "text/html" }) });
         const urlPath = new URL(req.url, "http://x").pathname;
-        return new Response(dirHtml(path, urlPath), { headers: { ...cors(), "Content-Type": "text/html; charset=utf-8" } });
+        return new Response(dirHtml(path, urlPath, root), { headers: { ...cors(), "Content-Type": "text/html; charset=utf-8" } });
       }
 
       const mtime = stat.mtime.toUTCString();
