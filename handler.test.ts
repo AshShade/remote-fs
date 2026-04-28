@@ -59,6 +59,17 @@ describe("GET", () => {
     const res = await fetch(req("GET", "config.json"));
     expect(JSON.parse(await res.text())).toEqual({ plugins: [] });
   });
+
+  test("renders markdown as HTML", async () => {
+    await fetch(req("PUT", "readme.md", "# Hello\n\nSome **bold** text"));
+    const res = await fetch(req("GET", "readme.md"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1");
+    expect(html).toContain("<strong>bold</strong>");
+    expect(html).toContain("#1e1e2e");
+  });
 });
 
 describe("HEAD", () => {

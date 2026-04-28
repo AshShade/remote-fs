@@ -165,6 +165,35 @@ export function createHandler(root: string) {
         return new Response(null, { status: 200, headers: cors({ "Last-Modified": mtime }) });
       }
       const file = Bun.file(path);
+      if (path.endsWith(".md")) {
+        const md = await file.text();
+        const body = Bun.markdown.html(md, { tables: true, strikethrough: true, tasklists: true, autolinks: true, headings: true });
+        const title = path.split("/").pop() ?? "Markdown";
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1e1e2e; color: #cdd6f4; font-family: -apple-system, 'Segoe UI', sans-serif; padding: 32px; max-width: 860px; margin: 0 auto; line-height: 1.7; }
+  h1, h2, h3, h4, h5, h6 { color: #cba6f7; margin: 1.4em 0 0.6em; font-weight: 600; }
+  h1 { font-size: 2em; border-bottom: 1px solid #313244; padding-bottom: 0.3em; }
+  h2 { font-size: 1.5em; border-bottom: 1px solid #313244; padding-bottom: 0.2em; }
+  a { color: #89b4fa; text-decoration: none; } a:hover { text-decoration: underline; }
+  code { background: #313244; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; font-family: 'SF Mono', monospace; }
+  pre { background: #313244; padding: 16px; border-radius: 8px; overflow-x: auto; margin: 1em 0; }
+  pre code { background: none; padding: 0; }
+  blockquote { border-left: 3px solid #cba6f7; padding: 0.5em 1em; margin: 1em 0; color: #a6adc8; background: #181825; border-radius: 0 6px 6px 0; }
+  table { border-collapse: collapse; margin: 1em 0; width: 100%; }
+  th, td { border: 1px solid #45475a; padding: 8px 12px; text-align: left; }
+  th { background: #313244; color: #cba6f7; }
+  img { max-width: 100%; border-radius: 8px; }
+  ul, ol { padding-left: 2em; margin: 0.5em 0; }
+  li { margin: 0.3em 0; }
+  hr { border: none; border-top: 1px solid #45475a; margin: 2em 0; }
+  p { margin: 0.8em 0; }
+  del { color: #585b70; }
+  input[type="checkbox"] { margin-right: 6px; }
+</style></head><body>${body}</body></html>`;
+        return new Response(html, { headers: cors({ "Last-Modified": mtime, "Content-Type": "text/html; charset=utf-8" }) });
+      }
       const ct = file.type === "application/octet-stream" ? "text/plain; charset=utf-8" : file.type;
       return new Response(file, { headers: cors({ "Last-Modified": mtime, "Content-Type": ct }) });
     }
