@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { fmtSize, listDir, checkPath, createDir, uploadFile } from "./ui/src/api";
+import { fmtSize, listDir, checkPath, createDir, uploadFile, deleteFile } from "./ui/src/api";
 
 describe("fmtSize", () => {
   test("formats bytes", () => expect(fmtSize(512)).toBe("512 B"));
@@ -96,6 +96,22 @@ describe("uploadFile", () => {
   });
 });
 
+describe("deleteFile", () => {
+  test("returns true on success", async () => {
+    const orig = globalThis.fetch;
+    globalThis.fetch = mock(() => Promise.resolve(new Response("{}", { status: 200 }))) as any;
+    expect(await deleteFile("/f.txt")).toBe(true);
+    globalThis.fetch = orig;
+  });
+
+  test("returns false on failure", async () => {
+    const orig = globalThis.fetch;
+    globalThis.fetch = mock(() => Promise.resolve(new Response("err", { status: 404 }))) as any;
+    expect(await deleteFile("/ghost.txt")).toBe(false);
+    globalThis.fetch = orig;
+  });
+});
+
 // Integration tests
 import { rmSync, mkdirSync } from "fs";
 import { join } from "path";
@@ -151,5 +167,13 @@ describe("API integration", () => {
   test("POST creates directory", async () => {
     const r = await globalThis.fetch(`${base}/newdir`, { method: "POST" });
     expect(r.status).toBe(201);
+  });
+
+  test("DELETE removes file", async () => {
+    await globalThis.fetch(`${base}/del.txt`, { method: "PUT", body: "bye" });
+    const r = await globalThis.fetch(`${base}/del.txt`, { method: "DELETE" });
+    expect(r.ok).toBe(true);
+    const check = await globalThis.fetch(`${base}/del.txt`, { method: "HEAD" });
+    expect(check.status).toBe(404);
   });
 });

@@ -27,6 +27,11 @@ export async function uploadFile(path: string, buf: ArrayBuffer): Promise<boolea
   return r.ok;
 }
 
+export async function deleteFile(path: string): Promise<boolean> {
+  const r = await fetch(path, { method: "DELETE" });
+  return r.ok;
+}
+
 export function fmtSize(b: number): string {
   if (b < 1024) return b + " B";
   if (b < 1048576) return (b / 1024).toFixed(1) + " KB";

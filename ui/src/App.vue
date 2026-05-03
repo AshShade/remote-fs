@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { checkPath, listDir, createDir, uploadFile, type DirEntry } from "./api";
+import { checkPath, listDir, createDir, uploadFile, deleteFile, type DirEntry } from "./api";
 import FileTable from "./components/FileTable.vue";
 import FileViewer from "./components/FileViewer.vue";
 import PathBar from "./components/PathBar.vue";
@@ -89,6 +89,12 @@ async function upload(files: FileList) {
   await nav(curPath.value + "/");
 }
 
+async function del(path: string, name: string) {
+  if (!confirm(`Delete "${name}"?`)) return;
+  await deleteFile(path);
+  await nav(curPath.value + "/");
+}
+
 function openFile(path: string) {
   viewingFile.value = path;
   history.pushState(null, "", path);
@@ -161,7 +167,7 @@ onMounted(() => {
     <Toolbar v-if="!viewingFile" @mkdir="mkdir" @upload="upload" />
     <PathBar v-if="!viewingFile" @go="goPath" />
     <FileViewer v-if="viewingFile" :path="viewingFile" @close="viewingFile = ''" />
-    <FileTable v-else :entries="entries" :curPath="curPath" @nav="nav" @open="openFile" />
+    <FileTable v-else :entries="entries" :curPath="curPath" @nav="nav" @open="openFile" @delete="del" />
     <Toast :msg="toastMsg" :type="toastType" @done="toastMsg = ''" />
     <Modal v-if="modalOpen" :title="modalTitle" @close="onModalClose" />
   </template>

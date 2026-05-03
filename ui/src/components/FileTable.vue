@@ -2,7 +2,7 @@
 import { type DirEntry, fmtSize } from "../api";
 
 const props = defineProps<{ entries: DirEntry[]; curPath: string }>();
-const emit = defineEmits<{ nav: [path: string]; open: [path: string] }>();
+const emit = defineEmits<{ nav: [path: string]; open: [path: string]; delete: [path: string, name: string] }>();
 
 function href(e: DirEntry) {
   return props.curPath + "/" + encodeURIComponent(e.name) + (e.dir ? "/" : "");
@@ -16,11 +16,11 @@ function parentPath() {
 <template>
   <table>
     <thead>
-      <tr><th></th><th>Name</th><th></th><th>Size</th><th>Modified</th></tr>
+      <tr><th></th><th>Name</th><th></th><th>Size</th><th>Modified</th><th></th></tr>
     </thead>
     <tbody>
       <tr v-if="curPath !== '' && curPath !== '/'" @click="emit('nav', parentPath())">
-        <td>📁</td><td><a @click.prevent>.. </a></td><td></td><td>—</td><td></td>
+        <td>📁</td><td><a @click.prevent>.. </a></td><td></td><td>—</td><td></td><td></td>
       </tr>
       <tr v-for="e in entries" :key="e.name">
         <td>{{ e.dir ? "📁" : "📄" }}</td>
@@ -33,6 +33,7 @@ function parentPath() {
         </td>
         <td>{{ e.dir ? "—" : fmtSize(e.size) }}</td>
         <td class="mtime">{{ e.mtime }}</td>
+        <td><a class="del" title="Delete" @click.stop="emit('delete', href(e), e.name)">🗑</a></td>
       </tr>
     </tbody>
   </table>
@@ -50,5 +51,7 @@ td:nth-child(4) { color: #a6adc8; font-size: 13px; width: 80px; text-align: righ
 .mtime { color: #585b70; font-size: 12px; width: 160px; text-align: right; }
 .dl { color: #585b70; font-size: 12px; text-decoration: none; }
 .dl:hover { color: #89b4fa; }
+.del { color: #585b70; font-size: 12px; cursor: pointer; text-decoration: none; }
+.del:hover { color: #f38ba8; }
 .footer { margin-top: 20px; color: #585b70; font-size: 12px; }
 </style>
