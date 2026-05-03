@@ -1,3 +1,5 @@
 data/
 .test-data/
 node_modules/
+ui/dist/
+.test-api-data/

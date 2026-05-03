@@ -1,140 +1,52 @@
-// remote-fs — lightweight REST file server with Last-Modified support
-import { existsSync, mkdirSync, unlinkSync, statSync, readdirSync } from "fs";
-import { join, resolve, relative } from "path";
+// remote-fs — lightweight REST file server with Vue SPA frontend
+import { existsSync, mkdirSync, unlinkSync, statSync, readdirSync, readFileSync } from "fs";
+import { join, resolve, dirname } from "path";
 
-function safePath(root: string, url: string): string | null {
+const SELF_DIR = dirname(new URL(import.meta.url).pathname);
+const ICON_SVG = readFileSync(join(SELF_DIR, "icon.svg"), "utf-8");
+const ICON_192 = readFileSync(join(SELF_DIR, "icon-192.png"));
+const ICON_512 = readFileSync(join(SELF_DIR, "icon-512.png"));
+const MANIFEST = JSON.stringify({ name: "remote-fs", short_name: "remote-fs", start_url: "/", display: "standalone", background_color: "#1e1e2e", theme_color: "#cba6f7", icons: [{ src: "/__pwa/icon.svg", sizes: "any", type: "image/svg+xml" }, { src: "/__pwa/icon-192.png", sizes: "192x192", type: "image/png" }, { src: "/__pwa/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }] });
+const SW_JS = `self.addEventListener("fetch",()=>{});`;
+const DIST_DIR = join(SELF_DIR, "ui", "dist");
+
+export function safePath(root: string, url: string): string | null {
   const decoded = decodeURIComponent(new URL(url, "http://x").pathname);
-  const full = resolve(root, decoded.slice(1)); // strip leading /
-  return full === root || full.startsWith(root + "/") ? full : null;
+  const full = resolve(root, decoded.slice(1));
+  return full === root || full.startsWith(root + "/") ? full : null; // security: defense-in-depth guard
 }
 
 function cors(headers: Record<string, string> = {}): Record<string, string> {
-  return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, PUT, POST, HEAD, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, If-Modified-Since", ...headers };
+  return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, PUT, POST, HEAD, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Accept, If-Modified-Since", ...headers };
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
-  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + " MB";
-  return (bytes / 1073741824).toFixed(1) + " GB";
-}
-
-function dirHtml(dirPath: string, urlPath: string, root: string): string {
-  const entries = readdirSync(dirPath, { withFileTypes: true })
+function dirJson(dirPath: string) {
+  return readdirSync(dirPath, { withFileTypes: true })
     .filter(e => !e.name.startsWith("."))
     .sort((a, b) => {
       if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
       return a.name.localeCompare(b.name);
+    })
+    .map(e => {
+      const stat = statSync(join(dirPath, e.name));
+      return { name: e.name, dir: e.isDirectory(), size: e.isDirectory() ? 0 : stat.size, mtime: stat.mtime.toISOString().replace("T", " ").slice(0, 19) };
     });
-
-  const rows = entries.map(e => {
-    const stat = statSync(join(dirPath, e.name));
-    const href = urlPath.replace(/\/$/, "") + "/" + encodeURIComponent(e.name) + (e.isDirectory() ? "/" : "");
-    const icon = e.isDirectory() ? "📁" : "📄";
-    const size = e.isDirectory() ? "—" : formatSize(stat.size);
-    const mtime = stat.mtime.toISOString().replace("T", " ").slice(0, 19);
-    const dl = e.isDirectory() ? "" : `<a href="${href}" download class="dl" title="Download">⬇</a>`;
-    const target = e.isDirectory() ? "" : ` target="_blank"`;
-    return `<tr><td>${icon}</td><td><a href="${href}"${target}>${e.name}${e.isDirectory() ? "/" : ""}</a></td><td>${dl}</td><td>${size}</td><td>${mtime}</td></tr>`;
-  }).join("\n");
-
-  const parent = urlPath !== "/" ? `<tr><td>📁</td><td><a href="${urlPath.replace(/\/[^/]*\/?$/, "/") || "/"}">..</a></td><td></td><td>—</td><td></td></tr>\n` : "";
-  const display = urlPath === "/" ? "~" : "~" + urlPath;
-  const parts = urlPath.split("/").filter(Boolean);
-  const breadcrumb = [`<a href="/">~</a>`].concat(
-    parts.map((p, i) => `<a href="/${parts.slice(0, i + 1).join("/")}/">${p}</a>`)
-  ).join(" / ");
-
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>remote-fs ${display}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #1e1e2e; color: #cdd6f4; font-family: -apple-system, 'SF Mono', monospace; padding: 24px; }
-  h1 { color: #cba6f7; font-size: 18px; margin-bottom: 16px; font-weight: 500; }
-  h1 span { color: #585b70; }
-  h1 span a { color: #a6adc8; }
-  h1 span a:hover { color: #cba6f7; }
-  h1 span a:last-child { color: #cdd6f4; }
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; color: #a6adc8; font-size: 12px; font-weight: 500; padding: 6px 12px; border-bottom: 1px solid #313244; }
-  td { padding: 8px 12px; border-bottom: 1px solid #313244; font-size: 14px; }
-  tr:hover { background: #313244; }
-  a { color: #89b4fa; text-decoration: none; }
-  a:hover { color: #b4befe; text-decoration: underline; }
-  td:first-child { width: 28px; text-align: center; }
-  td:nth-child(3) { width: 32px; text-align: center; }
-  td:nth-child(4) { color: #a6adc8; font-size: 13px; width: 80px; text-align: right; }
-  td:nth-child(5) { color: #585b70; font-size: 12px; width: 160px; text-align: right; }
-  .dl { color: #585b70; font-size: 12px; text-decoration: none; }
-  .dl:hover { color: #89b4fa; }
-  .footer { margin-top: 20px; color: #585b70; font-size: 12px; }
-  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
-  .toolbar button { background: #313244; border: 1px solid #45475a; border-radius: 6px; color: #cdd6f4; padding: 6px 14px; font-size: 13px; cursor: pointer; }
-  .toolbar button:hover { border-color: #cba6f7; color: #cba6f7; }
-  .toolbar input[type=file] { display: none; }
-  .pathbar { display: flex; gap: 8px; margin-bottom: 12px; }
-  .pathbar input { flex: 1; background: #313244; border: 1px solid #45475a; border-radius: 6px; color: #cdd6f4; padding: 6px 12px; font-size: 13px; font-family: inherit; outline: none; }
-  .pathbar input:focus { border-color: #cba6f7; }
-  .pathbar input::placeholder { color: #585b70; }
-  .pathbar button { background: #313244; border: 1px solid #45475a; border-radius: 6px; color: #cdd6f4; padding: 6px 14px; font-size: 13px; cursor: pointer; }
-  .pathbar button:hover { border-color: #cba6f7; color: #cba6f7; }
-</style></head><body>
-<h1>remote-fs <span>${breadcrumb}</span></h1>
-<div class="toolbar">
-  <button onclick="mkdir()">📁 New folder</button>
-  <button onclick="document.getElementById('upload').click()">📄 Upload file</button>
-  <input type="file" id="upload" multiple onchange="upload(this.files)" />
-</div>
-<div class="pathbar">
-  <input type="text" id="pathInput" placeholder="Enter absolute or relative path… (e.g. /projects/foo/bar.md)" onkeydown="if(event.key==='Enter')goPath()" />
-  <button onclick="goPath()">Go</button>
-</div>
-<table>
-<thead><tr><th></th><th>Name</th><th></th><th>Size</th><th>Modified</th></tr></thead>
-<tbody>
-${parent}${rows}
-</tbody></table>
-<div class="footer">${entries.length} items</div>
-<script>
-const base = "${urlPath.replace(/\/$/, "")}";
-const ROOT = "${root}";
-function mkdir() {
-  const name = prompt("Folder name:");
-  if (!name) return;
-  fetch(base + "/" + encodeURIComponent(name), { method: "POST" })
-    .then(() => location.reload());
 }
-function upload(files) {
-  Promise.all([...files].map(f =>
-    f.arrayBuffer().then(buf =>
-      fetch(base + "/" + encodeURIComponent(f.name), { method: "PUT", body: buf })
-    )
-  )).then(() => location.reload());
+
+function serveDistFile(filePath: string): Response | null {
+  const full = join(DIST_DIR, filePath);
+  if (!existsSync(full) || statSync(full).isDirectory()) return null;
+  return new Response(Bun.file(full), { headers: cors({ "Cache-Control": "public, max-age=31536000, immutable" }) });
 }
-function goPath() {
-  let p = document.getElementById("pathInput").value.trim();
-  if (!p) return;
-  // Strip base path prefix (e.g. /home/user → "")
-  if (p.startsWith(ROOT + "/")) p = p.slice(ROOT.length);
-  else if (p === ROOT) p = "/";
-  // Ensure leading slash
-  if (!p.startsWith("/")) p = base + "/" + p;
-  // Check if path is file or dir via HEAD
-  fetch(p, { method: "HEAD" }).then(r => {
-    if (!r.ok) { alert("Path not found: " + p); return; }
-    const ct = r.headers.get("Content-Type") || "";
-    if (ct.includes("text/html")) {
-      // directory listing → navigate
-      location.href = p;
-    } else {
-      // file → open in new tab, navigate to parent dir
-      window.open(p, "_blank");
-      const dir = p.slice(0, p.lastIndexOf("/") + 1) || "/";
-      if (dir !== location.pathname) location.href = dir;
-    }
-  });
+
+function serveIndex(): Response | null {
+  const index = join(DIST_DIR, "index.html");
+  if (!existsSync(index)) return null;
+  return new Response(Bun.file(index), { headers: cors({ "Content-Type": "text/html; charset=utf-8" }) });
 }
-</script>
-</body></html>`;
+
+function wantsHtml(req: Request): boolean {
+  return req.headers.get("Accept")?.includes("text/html") ?? false;
 }
 
 export function createHandler(root: string) {
@@ -143,19 +55,49 @@ export function createHandler(root: string) {
   return async function fetch(req: Request): Promise<Response> {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors() });
 
+    const url = new URL(req.url, "http://x");
+
+    // PWA assets
+    if (url.pathname === "/__pwa/manifest.json") return new Response(MANIFEST, { headers: cors({ "Content-Type": "application/manifest+json" }) });
+    if (url.pathname === "/__pwa/icon.svg") return new Response(ICON_SVG, { headers: cors({ "Content-Type": "image/svg+xml" }) });
+    if (url.pathname === "/__pwa/icon-192.png") return new Response(ICON_192, { headers: cors({ "Content-Type": "image/png" }) });
+    if (url.pathname === "/__pwa/icon-512.png") return new Response(ICON_512, { headers: cors({ "Content-Type": "image/png" }) });
+    if (url.pathname === "/__pwa/sw.js") return new Response(SW_JS, { headers: cors({ "Content-Type": "application/javascript", "Service-Worker-Allowed": "/" }) });
+
+    // Vite dist assets (JS, CSS, etc.)
+    if (url.pathname.startsWith("/assets/")) {
+      const res = serveDistFile(url.pathname);
+      if (res) return res;
+    }
+
     const path = safePath(root, req.url);
     if (!path) return new Response("bad path", { status: 400, headers: cors() });
 
     if (req.method === "HEAD" || req.method === "GET") {
+      // ?download — always serve raw file with Content-Disposition
+      if (url.searchParams.has("download")) {
+        if (!existsSync(path) || statSync(path).isDirectory()) return new Response("not found", { status: 404, headers: cors() });
+        const name = path.split("/").pop() ?? "file";
+        return new Response(Bun.file(path), { headers: cors({ "Content-Disposition": `attachment; filename="${name}"` }) });
+      }
+
+      // Browser navigation (Accept: text/html) — always serve SPA
+      if (req.method === "GET" && wantsHtml(req)) {
+        const index = serveIndex();
+        if (index) return index;
+        // Fallback: no dist built — serve raw content
+      }
+
       if (!existsSync(path)) return new Response("not found", { status: 404, headers: cors() });
       const stat = statSync(path);
 
+      // Directory
       if (stat.isDirectory()) {
-        if (req.method === "HEAD") return new Response(null, { status: 200, headers: cors({ "Content-Type": "text/html" }) });
-        const urlPath = new URL(req.url, "http://x").pathname;
-        return new Response(dirHtml(path, urlPath, root), { headers: { ...cors(), "Content-Type": "text/html; charset=utf-8" } });
+        if (req.method === "HEAD") return new Response(null, { status: 200, headers: cors({ "Content-Type": "application/json" }) });
+        return Response.json(dirJson(path), { headers: cors() });
       }
 
+      // File
       const mtime = stat.mtime.toUTCString();
       const ims = req.headers.get("If-Modified-Since");
       if (ims && Math.floor(new Date(ims).getTime() / 1000) >= Math.floor(stat.mtimeMs / 1000)) {
@@ -165,35 +107,6 @@ export function createHandler(root: string) {
         return new Response(null, { status: 200, headers: cors({ "Last-Modified": mtime }) });
       }
       const file = Bun.file(path);
-      if (path.endsWith(".md")) {
-        const md = await file.text();
-        const body = Bun.markdown.html(md, { tables: true, strikethrough: true, tasklists: true, autolinks: true, headings: true });
-        const title = path.split("/").pop() ?? "Markdown";
-        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #1e1e2e; color: #cdd6f4; font-family: -apple-system, 'Segoe UI', sans-serif; padding: 32px; max-width: 860px; margin: 0 auto; line-height: 1.7; }
-  h1, h2, h3, h4, h5, h6 { color: #cba6f7; margin: 1.4em 0 0.6em; font-weight: 600; }
-  h1 { font-size: 2em; border-bottom: 1px solid #313244; padding-bottom: 0.3em; }
-  h2 { font-size: 1.5em; border-bottom: 1px solid #313244; padding-bottom: 0.2em; }
-  a { color: #89b4fa; text-decoration: none; } a:hover { text-decoration: underline; }
-  code { background: #313244; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; font-family: 'SF Mono', monospace; }
-  pre { background: #313244; padding: 16px; border-radius: 8px; overflow-x: auto; margin: 1em 0; }
-  pre code { background: none; padding: 0; }
-  blockquote { border-left: 3px solid #cba6f7; padding: 0.5em 1em; margin: 1em 0; color: #a6adc8; background: #181825; border-radius: 0 6px 6px 0; }
-  table { border-collapse: collapse; margin: 1em 0; width: 100%; }
-  th, td { border: 1px solid #45475a; padding: 8px 12px; text-align: left; }
-  th { background: #313244; color: #cba6f7; }
-  img { max-width: 100%; border-radius: 8px; }
-  ul, ol { padding-left: 2em; margin: 0.5em 0; }
-  li { margin: 0.3em 0; }
-  hr { border: none; border-top: 1px solid #45475a; margin: 2em 0; }
-  p { margin: 0.8em 0; }
-  del { color: #585b70; }
-  input[type="checkbox"] { margin-right: 6px; }
-</style></head><body>${body}</body></html>`;
-        return new Response(html, { headers: cors({ "Last-Modified": mtime, "Content-Type": "text/html; charset=utf-8" }) });
-      }
       const ct = file.type === "application/octet-stream" ? "text/plain; charset=utf-8" : file.type;
       return new Response(file, { headers: cors({ "Last-Modified": mtime, "Content-Type": ct }) });
     }
