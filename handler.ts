@@ -17,7 +17,7 @@ export function safePath(root: string, url: string): string | null {
 }
 
 function cors(headers: Record<string, string> = {}): Record<string, string> {
-  return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, PUT, POST, HEAD, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Accept, If-Modified-Since", ...headers };
+  return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, PUT, POST, HEAD, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Accept, If-Modified-Since, X-Want-Root", "Access-Control-Expose-Headers": "X-Root", ...headers };
 }
 
 function dirJson(dirPath: string) {
@@ -53,16 +53,18 @@ export function createHandler(root: string) {
   mkdirSync(root, { recursive: true });
 
   return async function fetch(req: Request): Promise<Response> {
-    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors() });
+    const wantRoot = req.headers.get("X-Want-Root") ? { "X-Root": root } : {};
+    const h = (extra: Record<string, string> = {}) => cors({ ...wantRoot, ...extra });
+    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: h() });
 
     const url = new URL(req.url, "http://x");
 
     // PWA assets
-    if (url.pathname === "/__pwa/manifest.json") return new Response(MANIFEST, { headers: cors({ "Content-Type": "application/manifest+json" }) });
-    if (url.pathname === "/__pwa/icon.svg") return new Response(ICON_SVG, { headers: cors({ "Content-Type": "image/svg+xml" }) });
-    if (url.pathname === "/__pwa/icon-192.png") return new Response(ICON_192, { headers: cors({ "Content-Type": "image/png" }) });
-    if (url.pathname === "/__pwa/icon-512.png") return new Response(ICON_512, { headers: cors({ "Content-Type": "image/png" }) });
-    if (url.pathname === "/__pwa/sw.js") return new Response(SW_JS, { headers: cors({ "Content-Type": "application/javascript", "Service-Worker-Allowed": "/" }) });
+    if (url.pathname === "/__pwa/manifest.json") return new Response(MANIFEST, { headers: h({ "Content-Type": "application/manifest+json" }) });
+    if (url.pathname === "/__pwa/icon.svg") return new Response(ICON_SVG, { headers: h({ "Content-Type": "image/svg+xml" }) });
+    if (url.pathname === "/__pwa/icon-192.png") return new Response(ICON_192, { headers: h({ "Content-Type": "image/png" }) });
+    if (url.pathname === "/__pwa/icon-512.png") return new Response(ICON_512, { headers: h({ "Content-Type": "image/png" }) });
+    if (url.pathname === "/__pwa/sw.js") return new Response(SW_JS, { headers: h({ "Content-Type": "application/javascript", "Service-Worker-Allowed": "/" }) });
 
     // Vite dist assets (JS, CSS, etc.)
     if (url.pathname.startsWith("/assets/")) {
@@ -71,14 +73,14 @@ export function createHandler(root: string) {
     }
 
     const path = safePath(root, req.url);
-    if (!path) return new Response("bad path", { status: 400, headers: cors() });
+    if (!path) return new Response("bad path", { status: 400, headers: h() });
 
     if (req.method === "HEAD" || req.method === "GET") {
       // ?download — always serve raw file with Content-Disposition
       if (url.searchParams.has("download")) {
-        if (!existsSync(path) || statSync(path).isDirectory()) return new Response("not found", { status: 404, headers: cors() });
+        if (!existsSync(path) || statSync(path).isDirectory()) return new Response("not found", { status: 404, headers: h() });
         const name = path.split("/").pop() ?? "file";
-        return new Response(Bun.file(path), { headers: cors({ "Content-Disposition": `attachment; filename="${name}"` }) });
+        return new Response(Bun.file(path), { headers: h({ "Content-Disposition": `attachment; filename="${name}"` }) });
       }
 
       // Browser navigation (Accept: text/html) — always serve SPA
@@ -88,27 +90,27 @@ export function createHandler(root: string) {
         // Fallback: no dist built — serve raw content
       }
 
-      if (!existsSync(path)) return new Response("not found", { status: 404, headers: cors() });
+      if (!existsSync(path)) return new Response("not found", { status: 404, headers: h() });
       const stat = statSync(path);
 
       // Directory
       if (stat.isDirectory()) {
-        if (req.method === "HEAD") return new Response(null, { status: 200, headers: cors({ "Content-Type": "application/json" }) });
-        return Response.json(dirJson(path), { headers: cors() });
+        if (req.method === "HEAD") return new Response(null, { status: 200, headers: h({ "Content-Type": "application/json" }) });
+        return Response.json(dirJson(path), { headers: h() });
       }
 
       // File
       const mtime = stat.mtime.toUTCString();
       const ims = req.headers.get("If-Modified-Since");
       if (ims && Math.floor(new Date(ims).getTime() / 1000) >= Math.floor(stat.mtimeMs / 1000)) {
-        return new Response(null, { status: 304, headers: cors({ "Last-Modified": mtime }) });
+        return new Response(null, { status: 304, headers: h({ "Last-Modified": mtime }) });
       }
       if (req.method === "HEAD") {
-        return new Response(null, { status: 200, headers: cors({ "Last-Modified": mtime }) });
+        return new Response(null, { status: 200, headers: h({ "Last-Modified": mtime }) });
       }
       const file = Bun.file(path);
       const ct = file.type === "application/octet-stream" ? "text/plain; charset=utf-8" : file.type;
-      return new Response(file, { headers: cors({ "Last-Modified": mtime, "Content-Type": ct }) });
+      return new Response(file, { headers: h({ "Last-Modified": mtime, "Content-Type": ct }) });
     }
 
     if (req.method === "PUT") {
@@ -116,20 +118,20 @@ export function createHandler(root: string) {
       mkdirSync(dir, { recursive: true });
       await Bun.write(path, await req.arrayBuffer());
       const mtime = statSync(path).mtime.toUTCString();
-      return Response.json({ updatedAt: mtime }, { headers: cors({ "Last-Modified": mtime }) });
+      return Response.json({ updatedAt: mtime }, { headers: h({ "Last-Modified": mtime }) });
     }
 
     if (req.method === "DELETE") {
-      if (!existsSync(path)) return new Response("not found", { status: 404, headers: cors() });
+      if (!existsSync(path)) return new Response("not found", { status: 404, headers: h() });
       unlinkSync(path);
-      return Response.json({ deleted: true }, { headers: cors() });
+      return Response.json({ deleted: true }, { headers: h() });
     }
 
     if (req.method === "POST") {
       mkdirSync(path, { recursive: true });
-      return Response.json({ created: true }, { status: 201, headers: cors() });
+      return Response.json({ created: true }, { status: 201, headers: h() });
     }
 
-    return new Response("method not allowed", { status: 405, headers: cors() });
+    return new Response("method not allowed", { status: 405, headers: h() });
   };
 }

@@ -5,8 +5,15 @@ export interface DirEntry {
   mtime: string;
 }
 
+let serverRoot = "";
+
+export function getServerRoot(): string { return serverRoot; }
+
 export async function listDir(path: string): Promise<DirEntry[]> {
-  const r = await fetch(path, { headers: { Accept: "application/json" } });
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (!serverRoot) headers["X-Want-Root"] = "1";
+  const r = await fetch(path, { headers });
+  if (!serverRoot) serverRoot = r.headers.get("X-Root") || "";
   return r.ok ? r.json() : [];
 }
 

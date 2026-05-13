@@ -215,6 +215,16 @@ describe("CORS", () => {
     const res = await fetch(req("GET", "nope.txt"));
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
   });
+
+  test("X-Root returned when X-Want-Root sent", async () => {
+    const res = await fetch(new Request("http://localhost/", { headers: { Accept: "application/json", "X-Want-Root": "1" } }));
+    expect(res.headers.get("X-Root")).toBe(ROOT);
+  });
+
+  test("X-Root not returned without X-Want-Root", async () => {
+    const res = await fetch(new Request("http://localhost/", { headers: { Accept: "application/json" } }));
+    expect(res.headers.get("X-Root")).toBeNull();
+  });
 });
 
 describe("security", () => {

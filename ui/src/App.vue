@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { checkPath, listDir, createDir, uploadFile, deleteFile, type DirEntry } from "./api";
+import { checkPath, listDir, createDir, uploadFile, deleteFile, getServerRoot, type DirEntry } from "./api";
 import FileTable from "./components/FileTable.vue";
 import FileViewer from "./components/FileViewer.vue";
 import PathBar from "./components/PathBar.vue";
@@ -105,6 +105,8 @@ async function goPath(raw: string) {
   let p = raw.trim();
   if (!p) return;
   if (!p.startsWith("/")) p = (curPath.value || "") + "/" + p;
+  const root = getServerRoot();
+  if (root && p.startsWith(root)) p = p.slice(root.length) || "/";
 
   const { ok, isDir } = await checkPath(p);
   if (ok) {
