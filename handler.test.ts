@@ -36,6 +36,15 @@ describe("PUT", () => {
     const res = await fetch(req("GET", "f.txt"));
     expect(await res.text()).toBe("v2");
   });
+
+  test("preserves binary data", async () => {
+    const bin = new Uint8Array([0x00, 0x50, 0x4B, 0x03, 0x04, 0xFF, 0xFE, 0x80, 0x90]);
+    const res = await fetch(new Request("http://localhost/bin.zip", { method: "PUT", body: bin }));
+    expect(res.status).toBe(200);
+    const get = await fetch(req("GET", "bin.zip"));
+    const arr = new Uint8Array(await get.arrayBuffer());
+    expect(arr).toEqual(bin);
+  });
 });
 
 describe("GET file", () => {

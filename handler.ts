@@ -114,7 +114,7 @@ export function createHandler(root: string) {
     if (req.method === "PUT") {
       const dir = join(path, "..");
       mkdirSync(dir, { recursive: true });
-      await Bun.write(path, await req.text());
+      await Bun.write(path, await req.arrayBuffer());
       const mtime = statSync(path).mtime.toUTCString();
       return Response.json({ updatedAt: mtime }, { headers: cors({ "Last-Modified": mtime }) });
     }
