@@ -96,6 +96,18 @@ describe("GET directory", () => {
     const res = await fetch(req("GET", "nope/"));
     expect(res.status).toBe(404);
   });
+
+  test("symlinked directory shows as dir: true", async () => {
+    const { symlinkSync } = await import("fs");
+    mkdirSync(join(ROOT, "parent"));
+    mkdirSync(join(ROOT, "parent", "real-dir"));
+    writeFileSync(join(ROOT, "parent", "real-dir", "file.txt"), "content");
+    symlinkSync(join(ROOT, "parent", "real-dir"), join(ROOT, "parent", "link-to-dir"));
+    const res = await fetch(req("GET", "parent/"));
+    const entries = await res.json() as { name: string; dir: boolean }[];
+    const link = entries.find(e => e.name === "link-to-dir");
+    expect(link?.dir).toBe(true);
+  });
 });
 
 describe("content negotiation", () => {
@@ -142,6 +154,29 @@ describe("?download", () => {
   test("returns 404 for directory", async () => {
     mkdirSync(join(ROOT, "adir"), { recursive: true });
     const res = await fetch(new Request("http://localhost/adir/?download"));
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("/__raw/", () => {
+  test("serves raw HTML bypassing SPA", async () => {
+    await fetch(req("PUT", "page.html", "<h1>Hi</h1>"));
+    const res = await fetch(new Request("http://localhost/__raw/page.html", { headers: { Accept: "text/html" } }));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("<h1>Hi</h1>");
+    expect(res.headers.get("Content-Type")).toContain("text/html");
+  });
+
+  test("serves relative assets under same prefix", async () => {
+    await fetch(req("PUT", "site/index.html", "<link href='style.css'>"));
+    await fetch(req("PUT", "site/style.css", "body{color:red}"));
+    const res = await fetch(new Request("http://localhost/__raw/site/style.css"));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("body{color:red}");
+  });
+
+  test("returns 404 for missing file", async () => {
+    const res = await fetch(new Request("http://localhost/__raw/nope.html"));
     expect(res.status).toBe(404);
   });
 });

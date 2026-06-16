@@ -16,5 +16,8 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "lucide-vue-next": "^1.0.0"
   }
 }

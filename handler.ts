@@ -21,15 +21,16 @@ function cors(headers: Record<string, string> = {}): Record<string, string> {
 }
 
 function dirJson(dirPath: string) {
-  return readdirSync(dirPath, { withFileTypes: true })
-    .filter(e => !e.name.startsWith("."))
-    .sort((a, b) => {
-      if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
-      return a.name.localeCompare(b.name);
+  return readdirSync(dirPath)
+    .filter(name => !name.startsWith("."))
+    .map(name => {
+      const stat = statSync(join(dirPath, name));
+      const dir = stat.isDirectory();
+      return { name, dir, size: dir ? 0 : stat.size, mtime: stat.mtime.toISOString().replace("T", " ").slice(0, 19) };
     })
-    .map(e => {
-      const stat = statSync(join(dirPath, e.name));
-      return { name: e.name, dir: e.isDirectory(), size: e.isDirectory() ? 0 : stat.size, mtime: stat.mtime.toISOString().replace("T", " ").slice(0, 19) };
+    .sort((a, b) => {
+      if (a.dir !== b.dir) return a.dir ? -1 : 1;
+      return a.name.localeCompare(b.name);
     });
 }
 
@@ -70,6 +71,17 @@ export function createHandler(root: string) {
     if (url.pathname.startsWith("/assets/")) {
       const res = serveDistFile(url.pathname);
       if (res) return res;
+    }
+
+    // /__raw/ — serve files directly, bypasses SPA (supports relative CSS/JS)
+    if (url.pathname.startsWith("/__raw/")) {
+      const rawPath = safePath(root, url.pathname.slice(6));
+      if (!rawPath) return new Response("bad path", { status: 400, headers: h() });
+      if (!existsSync(rawPath)) return new Response("not found", { status: 404, headers: h() });
+      const stat = statSync(rawPath);
+      if (stat.isDirectory()) return Response.json(dirJson(rawPath), { headers: h() });
+      const file = Bun.file(rawPath);
+      return new Response(file, { headers: h({ "Content-Type": file.type }) });
     }
 
     const path = safePath(root, req.url);

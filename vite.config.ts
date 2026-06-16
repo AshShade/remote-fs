@@ -14,9 +14,9 @@ function backendProxy(): Plugin {
         }
         const accept = req.headers.accept || "";
         const isHtml = accept.includes("text/html");
-        const isDownload = url.includes("?download");
+        const isRaw = url.startsWith("/__raw/") || url.includes("?download");
         // Browser navigation → let Vite serve SPA
-        if (req.method === "GET" && isHtml && !isDownload) {
+        if (req.method === "GET" && isHtml && !isRaw) {
           return next();
         }
         // Everything else → proxy to backend
