@@ -151,10 +151,15 @@ describe("?download", () => {
     expect(res.status).toBe(404);
   });
 
-  test("returns 404 for directory", async () => {
-    mkdirSync(join(ROOT, "adir"), { recursive: true });
-    const res = await fetch(new Request("http://localhost/adir/?download"));
-    expect(res.status).toBe(404);
+  test("zips directory for download", async () => {
+    await fetch(req("PUT", "zdir/a.txt", "aaa"));
+    await fetch(req("PUT", "zdir/b.txt", "bbb"));
+    const res = await fetch(new Request("http://localhost/zdir/?download"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/zip");
+    expect(res.headers.get("Content-Disposition")).toContain("zdir.zip");
+    const buf = await res.arrayBuffer();
+    expect(buf.byteLength).toBeGreaterThan(0);
   });
 });
 

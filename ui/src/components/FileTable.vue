@@ -35,6 +35,7 @@ function isHtml(name: string) {
         <td class="actions">
           <a v-if="!e.dir && isHtml(e.name)" :href="'/__raw' + href(e)" target="_blank" class="act" title="Preview in new tab"><ExternalLink :size="16" /></a>
           <a v-if="!e.dir" :href="href(e) + '?download'" class="act" title="Download"><Download :size="16" /></a>
+          <a v-if="e.dir" :href="href(e) + '?download'" class="act" title="Download as zip"><Download :size="16" /></a>
         </td>
         <td>{{ e.dir ? "—" : fmtSize(e.size) }}</td>
         <td class="mtime">{{ e.mtime }}</td>

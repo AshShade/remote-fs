@@ -1,6 +1,7 @@
 // remote-fs — lightweight REST file server with Vue SPA frontend
 import { existsSync, mkdirSync, unlinkSync, statSync, readdirSync, readFileSync } from "fs";
-import { join, resolve, dirname } from "path";
+import { join, resolve, dirname, relative } from "path";
+import { zipSync } from "fflate";
 
 const SELF_DIR = dirname(new URL(import.meta.url).pathname);
 const ICON_SVG = readFileSync(join(SELF_DIR, "icon.svg"), "utf-8");
@@ -18,6 +19,21 @@ export function safePath(root: string, url: string): string | null {
 
 function cors(headers: Record<string, string> = {}): Record<string, string> {
   return { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, PUT, POST, HEAD, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Accept, If-Modified-Since, X-Want-Root", "Access-Control-Expose-Headers": "X-Root", ...headers };
+}
+
+function zipDir(dirPath: string): Uint8Array {
+  const files: Record<string, Uint8Array> = {};
+  function walk(dir: string) {
+    for (const name of readdirSync(dir)) {
+      if (name.startsWith(".")) continue;
+      const full = join(dir, name);
+      const stat = statSync(full);
+      if (stat.isDirectory()) walk(full);
+      else files[relative(dirPath, full)] = new Uint8Array(readFileSync(full));
+    }
+  }
+  walk(dirPath);
+  return zipSync(files);
 }
 
 function dirJson(dirPath: string) {
@@ -88,9 +104,15 @@ export function createHandler(root: string) {
     if (!path) return new Response("bad path", { status: 400, headers: h() });
 
     if (req.method === "HEAD" || req.method === "GET") {
-      // ?download — always serve raw file with Content-Disposition
+      // ?download — serve file or zip directory
       if (url.searchParams.has("download")) {
-        if (!existsSync(path) || statSync(path).isDirectory()) return new Response("not found", { status: 404, headers: h() });
+        if (!existsSync(path)) return new Response("not found", { status: 404, headers: h() });
+        const stat = statSync(path);
+        if (stat.isDirectory()) {
+          const name = (path.split("/").pop() || "folder") + ".zip";
+          const zip = zipDir(path);
+          return new Response(zip, { headers: h({ "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="${name}"` }) });
+        }
         const name = path.split("/").pop() ?? "file";
         return new Response(Bun.file(path), { headers: h({ "Content-Disposition": `attachment; filename="${name}"` }) });
       }

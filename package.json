@@ -18,6 +18,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "lucide-vue-next": "^1.0.0"
   }
 }
